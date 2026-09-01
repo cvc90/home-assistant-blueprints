@@ -1,0 +1,216 @@
+blueprint:
+  name: Sync Remote Sensor to SNZB-02DR2
+  author: Sonoff
+  description: >
+    Synchronizes a required external temperature sensor and an optional
+    humidity sensor to slot 1 or 2 of a SONOFF SNZB-02DR2 connected through
+    ZHA or Zigbee2MQTT. Temperature values in Celsius, Fahrenheit, or Kelvin
+    are automatically converted to Celsius.
+  domain: automation
+
+  homeassistant:
+    min_version: 2024.10.0
+
+  input:
+    target_device:
+      name: SNZB-02DR2 device
+      description: Select the ZHA or Zigbee2MQTT SNZB-02DR2 to receive the reading.
+      selector:
+        device:
+          filter:
+            - integration: zha
+              manufacturer: SONOFF
+              model: SNZB-02DR2
+            - integration: mqtt
+              manufacturer: SONOFF
+              model: Temperature and humidity sensor with display and relay control
+              model_id: SNZB-02DR2
+
+    source_temperature:
+      name: External temperature sensor
+      description: Required. Select a temperature sensor from a different device.
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: temperature
+
+    source_humidity:
+      name: External humidity sensor (optional)
+      description: Select a relative humidity sensor from a different device.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: humidity
+
+    source_slot:
+      name: Remote slot
+      description: Select the remote slot used on the SNZB-02DR2.
+      default: "1"
+      selector:
+        select:
+          options:
+            - label: Slot 1
+              value: "1"
+            - label: Slot 2
+              value: "2"
+
+variables:
+  target_device: !input target_device
+  temperature_entity: !input source_temperature
+  humidity_entity: !input source_humidity
+  slot: !input source_slot
+  target_integration: >
+    {% set ns = namespace(value='') %}
+    {% for identifier in (device_attr(target_device, 'identifiers') or []) %}
+      {% if identifier[0] == 'zha' %}
+        {% set ns.value = 'zha' %}
+      {% elif identifier[0] == 'mqtt' %}
+        {% set ns.value = 'mqtt' %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.value }}
+  target_ieee: >
+    {%- for identifier in (device_attr(target_device, 'identifiers') or []) -%}
+      {%- if identifier[0] == 'zha' -%}
+        {{ identifier[1] }}
+      {%- endif -%}
+    {%- endfor %}
+  target_temperature_entity: >
+    {{ (device_entities(target_device) or [])
+       | select('match', '^number\\..*_source_' ~ slot ~ '_temperature$')
+       | list
+       | first
+       | default('', true) }}
+  target_humidity_entity: >
+    {{ (device_entities(target_device) or [])
+       | select('match', '^number\\..*_source_' ~ slot ~ '_humidity$')
+       | list
+       | first
+       | default('', true) }}
+
+triggers:
+  - trigger: event
+    id: source_changed
+    event_type: state_changed
+  - trigger: homeassistant
+    id: ha_started
+    event: start
+
+conditions:
+  - condition: template
+    value_template: >
+      {{ trigger.id == 'ha_started'
+         or trigger.event.data.entity_id in [temperature_entity, humidity_entity] }}
+  - condition: template
+    value_template: >
+      {{ is_number(states(temperature_entity))
+         and state_attr(temperature_entity, 'unit_of_measurement') in ['°C', '°F', 'K']
+         and -20 <= states(temperature_entity) | float <= 60
+         and temperature_entity not in (device_entities(target_device) or [])
+         and humidity_entity not in (device_entities(target_device) or [])
+         and device_attr(target_device, 'manufacturer') == 'SONOFF'
+         and ((target_integration | trim == 'zha'
+               and device_attr(target_device, 'model') == 'SNZB-02DR2'
+               and target_ieee | trim != '')
+              or (target_integration | trim == 'mqtt'
+                  and device_attr(target_device, 'model_id') == 'SNZB-02DR2'
+                  and target_temperature_entity | trim != '')) }}
+
+actions:
+  - variables:
+      temperature_c: >-
+        {% set value = states(temperature_entity) | float(0) %}
+        {% set unit = state_attr(temperature_entity, 'unit_of_measurement') %}
+        {% if unit == '°F' %}
+          {{ (value - 32) * 5 / 9 }}
+        {% elif unit == 'K' %}
+          {{ value - 273.15 }}
+        {% else %}
+          {{ value }}
+        {% endif %}
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ trigger.id == 'source_changed'
+                 or (trigger.id == 'ha_started' and target_integration | trim == 'mqtt') }}
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ target_integration | trim == 'zha' }}"
+                sequence:
+                  - action: zha.set_zigbee_cluster_attribute
+                    data:
+                      ieee: "{{ target_ieee | trim }}"
+                      endpoint_id: 1
+                      cluster_id: 0xFC11
+                      cluster_type: in
+                      attribute: 0xFFF1
+                      value: "{{ slot | int - 1 }}"
+                  - action: zha.set_zigbee_cluster_attribute
+                    data:
+                      ieee: "{{ target_ieee | trim }}"
+                      endpoint_id: 1
+                      cluster_id: 0xFC11
+                      cluster_type: in
+                      attribute: 0xFFF3
+                      value: "{{ (temperature_c | float * 100) | round(0) | int }}"
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ target_integration | trim == 'mqtt'
+                         and target_temperature_entity | trim != '' }}
+                sequence:
+                  - action: number.set_value
+                    target:
+                      entity_id: "{{ target_temperature_entity | trim }}"
+                    data:
+                      value: "{{ temperature_c | float | round(1) }}"
+
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >
+              {{ (trigger.id == 'source_changed'
+                  or (trigger.id == 'ha_started' and target_integration | trim == 'mqtt'))
+                 and humidity_entity | trim != ''
+                 and is_number(states(humidity_entity))
+                 and 0 <= states(humidity_entity) | float <= 99.9 }}
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ target_integration | trim == 'zha' }}"
+                sequence:
+                  - action: zha.set_zigbee_cluster_attribute
+                    data:
+                      ieee: "{{ target_ieee | trim }}"
+                      endpoint_id: 1
+                      cluster_id: 0xFC11
+                      cluster_type: in
+                      attribute: 0xFFF2
+                      value: "{{ slot | int - 1 }}"
+                  - action: zha.set_zigbee_cluster_attribute
+                    data:
+                      ieee: "{{ target_ieee | trim }}"
+                      endpoint_id: 1
+                      cluster_id: 0xFC11
+                      cluster_type: in
+                      attribute: 0xFFF4
+                      value: "{{ (states(humidity_entity) | float * 100) | round(0) | int }}"
+              - conditions:
+                  - condition: template
+                    value_template: >
+                      {{ target_integration | trim == 'mqtt'
+                         and target_humidity_entity | trim != '' }}
+                sequence:
+                  - action: number.set_value
+                    target:
+                      entity_id: "{{ target_humidity_entity | trim }}"
+                    data:
+                      value: "{{ states(humidity_entity) | float | round(1) }}"

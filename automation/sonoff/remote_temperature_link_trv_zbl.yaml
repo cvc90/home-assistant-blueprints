@@ -1,0 +1,89 @@
+blueprint:
+  name: "Sync Remote Temperature to TRV-ZBL"
+  author: Sonoff
+  description: >
+    Send an external temperature reading to a ZHA SONOFF TRV-ZBL. The quirk
+    encodes each reading as a firmware-defined 0x601E T=0x01 remote-temperature
+    frame, which binds or renews the two-hour remote-temperature lease.
+  domain: automation
+
+  input:
+    target_device:
+      name: TRV-ZBL device
+      description: Select the ZHA TRV-ZBL that receives the remote temperature.
+      selector:
+        device:
+          filter:
+            - integration: zha
+              manufacturer: SONOFF
+              model: TRV-ZBL
+    source_entity:
+      name: External temperature sensor
+      description: Select the temperature sensor that supplies the TRV-ZBL.
+      selector:
+        entity:
+          filter:
+            domain: sensor
+            device_class: temperature
+
+variables:
+  target_device: !input target_device
+  source_entity: !input source_entity
+  target_ieee: >
+    {%- for identifier in (device_attr(target_device, 'identifiers') or []) -%}
+      {%- if identifier[0] == 'zha' -%}
+        {{ identifier[1] }}
+      {%- endif -%}
+    {%- endfor %}
+  external_temperature_sensor: >
+    {{ (device_entities(target_device) or [])
+       | select('match', '^switch\\..*_external_temperature_sensor$')
+       | list
+       | first
+       | default('', true) }}
+
+triggers:
+  - trigger: state
+    entity_id: !input source_entity
+    id: source_temperature
+    not_to:
+      - "unknown"
+      - "unavailable"
+  - trigger: event
+    event_type: state_changed
+    id: external_temperature_sensor_enabled
+
+conditions:
+  - condition: template
+    value_template: >
+      {{ is_number(states(source_entity))
+         and state_attr(source_entity, 'unit_of_measurement') in ['°C', '°F', 'K']
+         and source_entity not in (device_entities(target_device) or [])
+         and device_attr(target_device, 'manufacturer') == 'SONOFF'
+         and device_attr(target_device, 'model') == 'TRV-ZBL'
+         and target_ieee | trim != ''
+         and external_temperature_sensor | trim != ''
+         and is_state(external_temperature_sensor, 'on')
+         and (trigger.id == 'source_temperature'
+              or (trigger.event.data.entity_id == external_temperature_sensor
+                  and trigger.event.data.new_state is not none
+                  and trigger.event.data.new_state.state == 'on')) }}
+
+actions:
+  - action: zha.set_zigbee_cluster_attribute
+    data:
+      ieee: "{{ target_ieee | trim }}"
+      endpoint_id: 1
+      cluster_id: 0xFC11
+      cluster_type: in
+      # 0xFF02 is the quirk's int16 entry point for 0x601E:T=0x01.
+      # The quirk owns the uint8-array encoding required by TRV-ZBL firmware.
+      attribute: 0xFF02
+      value: >
+        {% set temperature = states(source_entity) | float %}
+        {% set unit = state_attr(source_entity, 'unit_of_measurement') %}
+        {{ (((temperature - 32) * 5 / 9 if unit == '°F'
+             else temperature - 273.15 if unit == 'K'
+             else temperature) * 100) | round(0) | int }}
+
+mode: restart

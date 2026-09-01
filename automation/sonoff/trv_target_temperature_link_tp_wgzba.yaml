@@ -1,0 +1,128 @@
+blueprint:
+  name: "Link TP-WGZBA Target Temperature to TRVs"
+  author: Sonoff
+  description: >
+    Select the TP-WGZBA thermostat whose target temperature will be used as the
+    source, then select one or more SONOFF TRVs. This version forwards each
+    source target-temperature update to the ZHA TRV-ZBL/TRV-ZBT virtual linkage
+    temperature attribute, which encodes the device 0x601E linkage frame.
+  domain: automation
+
+  input:
+    source_tp_wgzba:
+      name: TP-WGZBA target temperature source
+      description: Select the TP-WGZBA device that provides the target temperature.
+      selector:
+        device:
+          filter:
+            - integration: zha
+              manufacturer: SONOFF
+              model: TP-WGZBA
+            - integration: mqtt
+              manufacturer: SONOFF
+              model: Zigbee thermostat panel
+              model_id: TP-WGZBA
+
+    target_trvs:
+      name: SONOFF TRV devices
+      description: Select one or more SONOFF TRVs. ZHA TRV-ZBL and TRV-ZBT devices are forwarded; other selected models are logged and skipped.
+      selector:
+        device:
+          multiple: true
+          filter:
+            - manufacturer: SONOFF
+              model: TRV-ZBT
+            - manufacturer: SONOFF
+              model: TRV-ZBL
+            - manufacturer: SONOFF
+              model: TRVZB
+
+variables:
+  source_tp_wgzba: !input source_tp_wgzba
+  target_trvs: !input target_trvs
+  source_climate: >
+    {{ (device_entities(source_tp_wgzba) or [])
+       | select('match', '^climate\\.')
+       | list
+       | first
+       | default('', true) }}
+
+triggers:
+  - trigger: event
+    event_type: state_changed
+    id: source_target_temperature_changed
+
+conditions:
+  - condition: template
+    value_template: >
+      {% set old_state = trigger.event.data.old_state %}
+      {% set new_state = trigger.event.data.new_state %}
+      {{ source_climate | trim != ''
+         and trigger.event.data.entity_id == source_climate | trim
+         and old_state is not none
+         and new_state is not none
+         and old_state.attributes.temperature != new_state.attributes.temperature
+         and new_state.attributes.temperature is number }}
+
+actions:
+  - variables:
+      target_temperature_x100: >
+        {{ (trigger.event.data.new_state.attributes.temperature | float * 100)
+           | round(0) | int }}
+  - repeat:
+      for_each: "{{ target_trvs }}"
+      sequence:
+        - variables:
+            target_device: "{{ repeat.item }}"
+            target_integration: >
+              {% set ns = namespace(value='') %}
+              {% for identifier in (device_attr(target_device, 'identifiers') or []) %}
+                {% if identifier[0] == 'zha' %}
+                  {% set ns.value = 'zha' %}
+                {% elif identifier[0] == 'mqtt' %}
+                  {% set ns.value = 'mqtt' %}
+                {% endif %}
+              {% endfor %}
+              {{ ns.value }}
+            target_ieee: >
+              {%- for identifier in (device_attr(target_device, 'identifiers') or []) -%}
+                {%- if identifier[0] == 'zha' -%}
+                  {{ identifier[1] }}
+                {%- endif -%}
+              {%- endfor %}
+        - choose:
+            - conditions:
+                - condition: template
+                  value_template: >
+                    {{ target_integration | trim == 'zha'
+                       and device_attr(target_device, 'manufacturer') == 'SONOFF'
+                       and device_attr(target_device, 'model') in ['TRV-ZBL', 'TRV-ZBT']
+                       and target_ieee | trim != ''
+                       and 500 <= target_temperature_x100 | int <= 3000 }}
+              sequence:
+                - action: zha.set_zigbee_cluster_attribute
+                  data:
+                    ieee: "{{ target_ieee | trim }}"
+                    endpoint_id: 1
+                    cluster_id: 0xFC11
+                    cluster_type: in
+                    # 0xFF01 是 quirk 的本地 int16 属性；其写入入口再编码为
+                    # 真实 0x601E:T=0x02 array，避免 YAML 模板数组被传成字符串。
+                    attribute: 0xFF01
+                    value: "{{ target_temperature_x100 | int }}"
+                - action: system_log.write
+                  data:
+                    level: info
+                    message: >
+                      TP-WGZBA target-temperature forward: {{ source_climate | trim }}
+                      -> {{ target_device }}, {{ target_temperature_x100 | int / 100 }} °C
+                      via 0xFF01 -> 0x601E:T=0x02.
+          default:
+            - action: system_log.write
+              data:
+                level: warning
+                message: >
+                  TP-WGZBA target-temperature forward skipped: {{ target_device }}
+                  is not a supported ZHA SONOFF TRV-ZBL/TRV-ZBT target yet.
+
+mode: restart
