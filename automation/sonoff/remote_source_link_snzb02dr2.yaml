@@ -2,10 +2,11 @@ blueprint:
   name: Sync Remote Sensor to SNZB-02DR2
   author: Sonoff
   description: >
-    Synchronizes a required external temperature sensor and an optional
-    humidity sensor to slot 1 or 2 of a SONOFF SNZB-02DR2 connected through
-    ZHA or Zigbee2MQTT. Temperature values in Celsius, Fahrenheit, or Kelvin
-    are automatically converted to Celsius.
+    Synchronizes an external temperature reading and an optional humidity
+    reading with a SONOFF SNZB-02DR2 connected through ZHA or Zigbee2MQTT.
+    Each reading is written to the selected remote slot when the source
+    updates. Temperature values in Celsius, Fahrenheit, or Kelvin are
+    automatically converted to Celsius.
   domain: automation
 
   homeassistant:

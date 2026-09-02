@@ -2,9 +2,11 @@ blueprint:
   name: "Sync Remote Temperature to TRV-ZBL"
   author: Sonoff
   description: >
-    Send an external temperature reading to a ZHA SONOFF TRV-ZBL. The quirk
-    encodes each reading as a firmware-defined 0x601E T=0x01 remote-temperature
-    frame, which binds or renews the two-hour remote-temperature lease.
+    Synchronizes an external temperature reading with a SONOFF TRV-ZBL
+    thermostatic radiator valve connected through ZHA. The reading is applied
+    whenever the valve's external temperature mode is enabled, immediately and
+    on each source update. Temperature values in Celsius, Fahrenheit, or Kelvin
+    are automatically converted to Celsius.
   domain: automation
 
   input:

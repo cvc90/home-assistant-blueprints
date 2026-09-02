@@ -2,10 +2,10 @@ blueprint:
   name: "Link TP-WGZBA Target Temperature to TRVs"
   author: Sonoff
   description: >
-    Select the TP-WGZBA thermostat whose target temperature will be used as the
-    source, then select one or more SONOFF TRVs. This version forwards each
-    source target-temperature update to the ZHA TRV-ZBL/TRV-ZBT virtual linkage
-    temperature attribute, which encodes the device 0x601E linkage frame.
+    Synchronizes the target temperature of a SONOFF TP-WGZBA thermostat
+    connected through ZHA or Zigbee2MQTT with one or more SONOFF TRVs. Each
+    change to the thermostat's target temperature is forwarded to the selected
+    ZHA TRV-ZBL or TRV-ZBT valves; other selected valves are skipped.
   domain: automation
 
   input:

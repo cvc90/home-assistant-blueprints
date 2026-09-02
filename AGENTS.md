@@ -19,6 +19,12 @@ Import the changed blueprint into a Home Assistant test instance, create an auto
 
 Use two-space indentation, never tabs. Preserve the existing Home Assistant blueprint layout: `blueprint`, `variables`, `triggers`, `conditions`, `actions`, then `mode`. Use descriptive snake_case filenames and blueprint input/variable IDs, such as `remote_temperature_link_tp_wgzba.yaml` and `source_temperature`. Keep human-facing labels concise and explain device, integration, units, and optional behavior in descriptions. Avoid unrelated reformatting.
 
+Keep `blueprint.description` consistent across all blueprints from the same author. Follow this fixed structure, using the same wording and sentence order as the existing blueprints:
+
+`<action> + <source> → <SONOFF model> (<integration>) → <trigger / behavior> → (temperature only) unit conversion`
+
+Describe only what the blueprint supports and does for the user. Do not leak implementation details such as entity IDs, Zigbee cluster or attribute IDs, quirk frame formats, or firmware leases.
+
 ## Documentation and Link Integrity
 
 Every new blueprint needs a matching entry in `README.md` with its summary, import badge URL, GitHub link, and raw-download link. When adding, moving, renaming, or deleting a file, update every affected relative and GitHub URL in the README in the same change. Verify each path segment and URL-encoded `blueprint_url` points to the final filename; do not leave stale links behind.

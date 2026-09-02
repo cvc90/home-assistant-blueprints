@@ -20,7 +20,7 @@ All SONOFF blueprints are under [`automation/sonoff`](automation/sonoff).
 
 ### Sync Remote Sensor to SNZB-02DR2
 
-Synchronizes an external temperature sensor and, optionally, a humidity sensor to remote slot 1 or 2 of an SNZB-02DR2. Supports ZHA and Zigbee2MQTT.
+Synchronizes an external temperature reading and an optional humidity reading with a SONOFF SNZB-02DR2. Supports ZHA and Zigbee2MQTT.
 
 [![Import Sync Remote Sensor to SNZB-02DR2](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fviys%2Fhome-assistant-blueprints%2Fblob%2Fmaster%2Fautomation%2Fsonoff%2Fremote_source_link_snzb02dr2.yaml)
 
@@ -30,7 +30,7 @@ Synchronizes an external temperature sensor and, optionally, a humidity sensor t
 
 ### Sync Remote Temperature to TP-WGZBA
 
-Sends an external temperature sensor reading to a SONOFF TP-WGZBA thermostat. Supports ZHA and Zigbee2MQTT.
+Synchronizes an external temperature reading with a SONOFF TP-WGZBA thermostat. Supports ZHA and Zigbee2MQTT.
 
 [![Import Sync Remote Temperature to TP-WGZBA](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fviys%2Fhome-assistant-blueprints%2Fblob%2Fmaster%2Fautomation%2Fsonoff%2Fremote_temperature_link_tp_wgzba.yaml)
 
@@ -40,7 +40,7 @@ Sends an external temperature sensor reading to a SONOFF TP-WGZBA thermostat. Su
 
 ### Sync Remote Temperature to TRV-ZBL
 
-Sends an external temperature sensor reading to a SONOFF TRV-ZBL through ZHA.
+Synchronizes an external temperature reading with a SONOFF TRV-ZBL thermostatic radiator valve. Supports ZHA.
 
 [![Import Sync Remote Temperature to TRV-ZBL](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fviys%2Fhome-assistant-blueprints%2Fblob%2Fmaster%2Fautomation%2Fsonoff%2Fremote_temperature_link_trv_zbl.yaml)
 
@@ -48,9 +48,19 @@ Sends an external temperature sensor reading to a SONOFF TRV-ZBL through ZHA.
 
 [Download YAML](https://raw.githubusercontent.com/viys/home-assistant-blueprints/master/automation/sonoff/remote_temperature_link_trv_zbl.yaml)
 
+### Sync Remote Temperature to TRVZB
+
+Synchronizes an external temperature reading with a SONOFF TRVZB thermostatic radiator valve. Supports ZHA and Zigbee2MQTT.
+
+[![Import Sync Remote Temperature to TRVZB](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fviys%2Fhome-assistant-blueprints%2Fblob%2Fmaster%2Fautomation%2Fsonoff%2Fremote_temperature_link_trvzb.yaml)
+
+[GitHub blueprint link](https://github.com/viys/home-assistant-blueprints/blob/master/automation/sonoff/remote_temperature_link_trvzb.yaml)
+
+[Download YAML](https://raw.githubusercontent.com/viys/home-assistant-blueprints/master/automation/sonoff/remote_temperature_link_trvzb.yaml)
+
 ### Link TP-WGZBA Target Temperature to TRVs
 
-Forwards target-temperature updates from a TP-WGZBA thermostat to one or more SONOFF TRV-ZBL or TRV-ZBT devices.
+Synchronizes the target temperature of a SONOFF TP-WGZBA thermostat with one or more SONOFF TRV-ZBL or TRV-ZBT devices.
 
 [![Import Link TP-WGZBA Target Temperature to TRVs](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fviys%2Fhome-assistant-blueprints%2Fblob%2Fmaster%2Fautomation%2Fsonoff%2Ftrv_target_temperature_link_tp_wgzba.yaml)
 
