@@ -1,0 +1,224 @@
+blueprint:
+  name: Sync Remote Temperature Sources to TP-WGZBA (ZHA)
+  author: Sonoff
+  description: >
+    Synchronizes one to three external temperature sources with a SONOFF
+    TP-WGZBA thermostat connected through ZHA. Firmware 1.0.5 uses the
+    existing single-source protocol; firmware 1.0.6 and newer use three
+    incremental remote-temperature slots.
+  domain: automation
+  input:
+    target_device:
+      name: TP-WGZBA device
+      description: Select the ZHA TP-WGZBA thermostat that should receive the temperatures.
+      selector:
+        device:
+          filter:
+            - integration: zha
+              manufacturer: SONOFF
+              model: TP-WGZBA
+    source_entity_1:
+      name: Remote temperature source 1
+      description: Required. Select a temperature sensor from another device.
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: temperature
+    source_entity_2:
+      name: Remote temperature source 2 (optional)
+      description: Leave empty when a second remote source is not used.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: temperature
+    source_entity_3:
+      name: Remote temperature source 3 (optional)
+      description: Leave empty when a third remote source is not used.
+      default: ""
+      selector:
+        entity:
+          filter:
+            - domain: sensor
+              device_class: temperature
+
+variables:
+  target_device: !input target_device
+  source_entity_1: !input source_entity_1
+  source_entity_2: !input source_entity_2
+  source_entity_3: !input source_entity_3
+  source_entities: >
+    {{ [source_entity_1, source_entity_2, source_entity_3]
+       | map('trim') | list }}
+  full_sync: "{{ trigger.id in ['ha_started', 'automation_reloaded'] }}"
+  target_ieee: >
+    {%- for identifier in (device_attr(target_device, 'identifiers') or []) -%}
+      {%- if identifier[0] == 'zha' -%}
+        {{ identifier[1] }}
+      {%- endif -%}
+    {%- endfor %}
+  target_sw_version: "{{ device_attr(target_device, 'sw_version') or '' }}"
+  supports_multi_remote_temperature: >
+    {% set parts = (target_sw_version | trim).split('.') %}
+    {% if parts | length != 3 or parts | select('match', '^\\d+$') | list | length != 3 %}
+      false
+    {% else %}
+      {% set major = parts[0] | int %}
+      {% set minor = parts[1] | int %}
+      {% set patch = parts[2] | int %}
+      {{ major > 1 or (major == 1 and (minor > 0 or (minor == 0 and patch >= 6))) }}
+    {% endif %}
+  has_extra_sources: >
+    {{ source_entity_2 | trim != '' or source_entity_3 | trim != '' }}
+
+triggers:
+  - trigger: event
+    id: source_changed
+    event_type: state_changed
+  - trigger: homeassistant
+    id: ha_started
+    event: start
+  - trigger: event
+    id: automation_reloaded
+    event_type: automation_reloaded
+
+conditions:
+  - condition: template
+    value_template: >
+      {{ trigger.id in ['ha_started', 'automation_reloaded']
+         or trigger.event.data.entity_id in source_entities }}
+  - condition: template
+    value_template: >
+      {{ target_ieee | trim != ''
+         and device_attr(target_device, 'manufacturer') == 'SONOFF'
+         and device_attr(target_device, 'model') == 'TP-WGZBA'
+         and source_entity_1 | trim != ''
+         and source_entity_1 not in (device_entities(target_device) or [])
+         and is_number(states(source_entity_1))
+         and state_attr(source_entity_1, 'unit_of_measurement') in ['°C', '°F', 'K']
+         and -273.15 <= ((states(source_entity_1) | float - 32) * 5 / 9
+                         if state_attr(source_entity_1, 'unit_of_measurement') == '°F'
+                         else states(source_entity_1) | float - 273.15
+                         if state_attr(source_entity_1, 'unit_of_measurement') == 'K'
+                         else states(source_entity_1) | float) <= 327.67
+         and (source_entity_2 | trim == '' or
+              (source_entity_2 not in (device_entities(target_device) or [])
+               and is_number(states(source_entity_2))
+               and state_attr(source_entity_2, 'unit_of_measurement') in ['°C', '°F', 'K']
+               and -273.15 <= ((states(source_entity_2) | float - 32) * 5 / 9
+                               if state_attr(source_entity_2, 'unit_of_measurement') == '°F'
+                               else states(source_entity_2) | float - 273.15
+                               if state_attr(source_entity_2, 'unit_of_measurement') == 'K'
+                               else states(source_entity_2) | float) <= 327.67))
+         and (source_entity_3 | trim == '' or
+              (source_entity_3 not in (device_entities(target_device) or [])
+               and is_number(states(source_entity_3))
+               and state_attr(source_entity_3, 'unit_of_measurement') in ['°C', '°F', 'K']
+               and -273.15 <= ((states(source_entity_3) | float - 32) * 5 / 9
+                               if state_attr(source_entity_3, 'unit_of_measurement') == '°F'
+                               else states(source_entity_3) | float - 273.15
+                               if state_attr(source_entity_3, 'unit_of_measurement') == 'K'
+                               else states(source_entity_3) | float) <= 327.67)) }}
+
+actions:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ not (supports_multi_remote_temperature | bool) and (has_extra_sources | bool) }}"
+        sequence:
+          - action: system_log.write
+            data:
+              level: error
+              message: >
+                TP-WGZBA {{ target_sw_version | trim or 'unknown' }} only supports
+                one remote temperature source; remove source 2/3 or upgrade to 1.0.6.
+          - stop: "The target firmware does not support multiple remote temperature sources."
+
+      - conditions:
+          - condition: template
+            value_template: "{{ supports_multi_remote_temperature | bool }}"
+        sequence:
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ full_sync | bool or trigger.event.data.entity_id == source_entity_1 }}"
+                sequence:
+                  - action: zha.set_zigbee_cluster_attribute
+                    data:
+                      ieee: "{{ target_ieee | trim }}"
+                      endpoint_id: 1
+                      cluster_id: 0xFC11
+                      cluster_type: in
+                      attribute: 0xFF11
+                      value: >
+                        {% set value = states(source_entity_1) | float %}
+                        {% set unit = state_attr(source_entity_1, 'unit_of_measurement') %}
+                        {{ (((value - 32) * 5 / 9 if unit == '°F'
+                             else value - 273.15 if unit == 'K'
+                             else value) * 100) | round(0) | int }}
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ full_sync | bool or trigger.event.data.entity_id == source_entity_2 }}"
+                sequence:
+                  - action: zha.set_zigbee_cluster_attribute
+                    data:
+                      ieee: "{{ target_ieee | trim }}"
+                      endpoint_id: 1
+                      cluster_id: 0xFC11
+                      cluster_type: in
+                      attribute: 0xFF12
+                      value: >
+                        {% if source_entity_2 | trim == '' %}
+                          -32768
+                        {% else %}
+                          {% set value = states(source_entity_2) | float %}
+                          {% set unit = state_attr(source_entity_2, 'unit_of_measurement') %}
+                          {{ (((value - 32) * 5 / 9 if unit == '°F'
+                               else value - 273.15 if unit == 'K'
+                               else value) * 100) | round(0) | int }}
+                        {% endif %}
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ full_sync | bool or trigger.event.data.entity_id == source_entity_3 }}"
+                sequence:
+                  - action: zha.set_zigbee_cluster_attribute
+                    data:
+                      ieee: "{{ target_ieee | trim }}"
+                      endpoint_id: 1
+                      cluster_id: 0xFC11
+                      cluster_type: in
+                      attribute: 0xFF13
+                      value: >
+                        {% if source_entity_3 | trim == '' %}
+                          -32768
+                        {% else %}
+                          {% set value = states(source_entity_3) | float %}
+                          {% set unit = state_attr(source_entity_3, 'unit_of_measurement') %}
+                          {{ (((value - 32) * 5 / 9 if unit == '°F'
+                               else value - 273.15 if unit == 'K'
+                               else value) * 100) | round(0) | int }}
+                        {% endif %}
+
+      - conditions:
+          - condition: template
+            value_template: "{{ not (supports_multi_remote_temperature | bool) }}"
+        sequence:
+          - action: zha.set_zigbee_cluster_attribute
+            data:
+              ieee: "{{ target_ieee | trim }}"
+              endpoint_id: 1
+              cluster_id: 0xFC11
+              cluster_type: in
+              attribute: 0xFF11
+              value: >
+                {% set value = states(source_entity_1) | float %}
+                {% set unit = state_attr(source_entity_1, 'unit_of_measurement') %}
+                {{ (((value - 32) * 5 / 9 if unit == '°F'
+                     else value - 273.15 if unit == 'K'
+                     else value) * 100) | round(0) | int }}
+
+mode: restart
