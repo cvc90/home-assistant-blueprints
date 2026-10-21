@@ -3,8 +3,8 @@ blueprint:
   author: Sonoff
   description: >
     Synchronizes one to three external temperature sources with a SONOFF
-    TP-WGZBA thermostat connected through ZHA. Firmware 1.0.5 uses the
-    existing single-source protocol; firmware 1.0.6 and newer use three
+    TP-WGZBA thermostat connected through ZHA. Firmware 0x00001004 uses the
+    existing single-source protocol; firmware 0x00001006 and newer use three
     incremental remote-temperature slots.
   domain: automation
   input:
@@ -61,14 +61,12 @@ variables:
     {%- endfor %}
   target_sw_version: "{{ device_attr(target_device, 'sw_version') or '' }}"
   supports_multi_remote_temperature: >
-    {% set parts = (target_sw_version | trim).split('.') %}
-    {% if parts | length != 3 or parts | select('match', '^\\d+$') | list | length != 3 %}
-      false
+    {% set version = target_sw_version | trim | lower %}
+    {% if version.startswith('0x') and version[2:] | length == 8 %}
+      {% set encoded_version = version[2:] | int(default=0, base=16) %}
+      {{ encoded_version >= 4102 }}
     {% else %}
-      {% set major = parts[0] | int %}
-      {% set minor = parts[1] | int %}
-      {% set patch = parts[2] | int %}
-      {{ major > 1 or (major == 1 and (minor > 0 or (minor == 0 and patch >= 6))) }}
+      false
     {% endif %}
   has_extra_sources: >
     {{ source_entity_2 | trim != '' or source_entity_3 | trim != '' }}
@@ -133,7 +131,7 @@ actions:
               level: error
               message: >
                 TP-WGZBA {{ target_sw_version | trim or 'unknown' }} only supports
-                one remote temperature source; remove source 2/3 or upgrade to 1.0.6.
+                one remote temperature source; remove source 2/3 or upgrade to 0x00001006.
           - stop: "The target firmware does not support multiple remote temperature sources."
 
       - conditions:
