@@ -8,7 +8,9 @@ blueprint:
     is under development. Firmware 0x00001004 uses the existing single-source
     protocol; firmware 0x00001006 and newer use three incremental
     remote-temperature slots. On older firmware, source 2 and source 3 are
-    ignored and only source 1 is synchronized.
+    ignored and only source 1 is synchronized. Synchronization runs only while
+    the thermostat's External temperature sensor switch is enabled, and resumes
+    when the switch is turned on.
   domain: automation
   input:
     target_device:
@@ -55,7 +57,18 @@ variables:
   source_entities: >
     {{ [source_entity_1, source_entity_2, source_entity_3]
        | map('trim') | list }}
-  full_sync: "{{ trigger.id in ['ha_started', 'automation_reloaded'] }}"
+  zha_external_temperature_sensor_switch: >
+    {{ (device_entities(target_device) or [])
+       | select('match', '^switch\\..*_external_temperature_sensor$')
+       | list
+       | first
+       | default('', true) }}
+  full_sync: >
+    {{ trigger.id in ['ha_started', 'automation_reloaded']
+       or (trigger.id == 'source_changed'
+           and trigger.event.data.entity_id == zha_external_temperature_sensor_switch
+           and trigger.event.data.new_state is not none
+           and trigger.event.data.new_state.state == 'on') }}
   target_ieee: >
     {%- for identifier in (device_attr(target_device, 'identifiers') or []) -%}
       {%- if identifier[0] == 'zha' -%}
@@ -89,10 +102,16 @@ conditions:
   - condition: template
     value_template: >
       {{ trigger.id in ['ha_started', 'automation_reloaded']
-         or trigger.event.data.entity_id in source_entities }}
+         or (trigger.id == 'source_changed'
+             and (trigger.event.data.entity_id in source_entities
+                  or (trigger.event.data.entity_id == zha_external_temperature_sensor_switch
+                      and trigger.event.data.new_state is not none
+                      and trigger.event.data.new_state.state == 'on'))) }}
   - condition: template
     value_template: >
       {{ target_ieee | trim != ''
+         and zha_external_temperature_sensor_switch | trim != ''
+         and is_state(zha_external_temperature_sensor_switch, 'on')
          and device_attr(target_device, 'manufacturer') == 'SONOFF'
          and device_attr(target_device, 'model') == 'TP-WGZBA'
          and source_entity_1 | trim != ''
