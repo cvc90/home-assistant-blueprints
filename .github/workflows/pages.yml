@@ -1,0 +1,53 @@
+name: User manual
+
+on:
+  push:
+    branches: [master, dev]
+    paths:
+      - docs/**
+      - automation/sonoff/**
+      - tools/check_site.py
+      - .github/workflows/pages.yml
+      - .github/workflows/manual-build.yml
+  pull_request:
+    paths:
+      - docs/**
+      - automation/sonoff/**
+      - tools/check_site.py
+      - .github/workflows/pages.yml
+      - .github/workflows/manual-build.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  ASTRO_TELEMETRY_DISABLED: "1"
+
+concurrency:
+  group: manual-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    uses: ./.github/workflows/manual-build.yml
+
+  deploy:
+    name: Publish user manual
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || github.ref == 'refs/heads/dev')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
